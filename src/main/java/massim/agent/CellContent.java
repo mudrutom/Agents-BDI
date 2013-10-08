@@ -1,0 +1,3 @@
+package massim.agent;
+
+enum CellContent {UNKNOWN, EMPTY, FENCE_OPEN, FENCE_CLOSED, ALLY_AGENT, FOE_AGENT, OBSTACLE, COW, CORRAL}
