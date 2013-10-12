@@ -12,198 +12,174 @@ import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
 
-/**
- * Description of an agent for the simulation
- */
+/** Description of an agent for the simulation */
 public abstract class MASAgent extends AbstractAgent implements MessageHandler {
 
-    interface OnPositionChangedCallback {
-        void positionChanged(Position pos);
-    }
+	interface OnPositionChangedCallback {
+		void positionChanged(Position pos);
+	}
 
-    Communicator communicator;
-    List<String> agents = new LinkedList<String>();
-    List<Message> inbox = new LinkedList<Message>();
-    int nAgents;
+	Communicator communicator;
+	List<String> agents = new LinkedList<String>();
+	List<Message> inbox = new LinkedList<Message>();
+	int nAgents;
 
-    private OnPositionChangedCallback positonChagnedCallback;
+	private OnPositionChangedCallback positonChagnedCallback;
 
-    public MASAgent(String host, int port, String username, String password) {
-        this.setUsername(username);
-        this.setPassword(password);
-        this.setHost(host);
-        this.setPort(port);
-    }
+	public MASAgent(String host, int port, String username, String password) {
+		this.setUsername(username);
+		this.setPassword(password);
+		this.setHost(host);
+		this.setPort(port);
+	}
 
-    @Override
-    public void notify(Message msg) {
-        inbox.add(msg);
-    }
+	@Override
+	public synchronized void notify(Message msg) {
+		inbox.add(msg);
+	}
 
-    protected List<Message> getNewMessages() {
-        LinkedList<Message> newMessages = new LinkedList<Message>(inbox);
-        inbox = new LinkedList<Message>();
-        return newMessages;
-    }
+	protected synchronized List<Message> getNewMessages() {
+		LinkedList<Message> newMessages = new LinkedList<Message>(inbox);
+		inbox = new LinkedList<Message>();
+		return newMessages;
+	}
 
-    public void setCommunicator(Communicator communicator, List<String> agents) {
-        this.communicator = communicator;
-        this.agents = new LinkedList<String>(agents);
-        this.nAgents = agents.size();
-    }
+	public void setCommunicator(Communicator communicator, List<String> agents) {
+		this.communicator = communicator;
+		this.agents = new LinkedList<String>(agents);
+		this.nAgents = agents.size();
+	}
 
-    protected void sendMessage(String receiver, Content content) {
-        Message msg = communicator.createMessage(content);
-        LinkedList<String> receivers = new LinkedList<String>();
-        receivers.add(receiver);
-        msg.addReceivers(receivers);
-        communicator.sendMessage(msg);
-    }
+	protected void sendMessage(String receiver, Content content) {
+		Message msg = communicator.createMessage(content);
+		LinkedList<String> receivers = new LinkedList<String>();
+		receivers.add(receiver);
+		msg.addReceivers(receivers);
+		communicator.sendMessage(msg);
+	}
 
-    protected void broadcast(Content content) {
-        Message msg = communicator.createMessage(content);
-        LinkedList<String> receivers = new LinkedList<String>();
-        for (String agent: agents) {
-            if (!agent.equals(getUsername())) {
-                receivers.add(agent);
-            }
-        }
-        msg.addReceivers(receivers);
-        communicator.sendMessage(msg);
-    }
+	protected void broadcast(Content content) {
+		Message msg = communicator.createMessage(content);
+		LinkedList<String> receivers = new LinkedList<String>();
+		for (String agent : agents) {
+			if (!agent.equals(getUsername())) {
+				receivers.add(agent);
+			}
+		}
+		msg.addReceivers(receivers);
+		communicator.sendMessage(msg);
+	}
 
-    @Override
-    public void processSimulationStart(Element perception, long currenttime) {
-        super.processSimulationStart(perception, currenttime);
+	@Override
+	public void processSimulationStart(Element perception, long currentTime) {
+		super.processSimulationStart(perception, currentTime);
 
-        int gridWidth = Integer.parseInt(perception.getAttribute("gsizex"));
-        int gridHeight = Integer.parseInt(perception.getAttribute("gsizey"));
+		int gridWidth = Integer.parseInt(perception.getAttribute("gsizex"));
+		int gridHeight = Integer.parseInt(perception.getAttribute("gsizey"));
 
-        int visibility = Integer.parseInt(perception.getAttribute("lineOfSight"));
+		int visibility = Integer.parseInt(perception.getAttribute("lineOfSight"));
+		onStart(gridWidth, gridHeight, visibility);
+	}
 
-        int corralX1 = Integer.parseInt(perception.getAttribute("corralx0"));
-        int corralX2 = Integer.parseInt(perception.getAttribute("corralx1"));
-        int corralY1 = Integer.parseInt(perception.getAttribute("corraly0"));
-        int corralY2 = Integer.parseInt(perception.getAttribute("corraly1"));
+	protected abstract void onStart(int gridWidth, int gridHeight, int visibility);
 
-        int steps = Integer.parseInt(perception.getAttribute("steps"));
+	@Override
+	public void processRequestAction(Element perception, Element target, long currentTime, long deadline) {
+		// process percepts
 
-        onStart(gridWidth, gridHeight, visibility);
-    }
+		int posX = Integer.parseInt(perception.getAttribute("posx"));
+		int posY = Integer.parseInt(perception.getAttribute("posy"));
 
-    abstract protected void onStart(int gridWidth, int gridHeight, int visibility);
+		if (positonChagnedCallback != null) {
+			positonChagnedCallback.positionChanged(new Position(posX, posY));
+		}
 
-    @Override
-    public void processRequestAction(Element perception, Element target,
-            long currenttime, long deadline) {
-        //super.processRequestAction(perception, target, currenttime, deadline);
+		int cowsInCorral = Integer.parseInt(perception.getAttribute("cowsInCorral"));
 
+		int step = Integer.parseInt(perception.getAttribute("step"));
 
-        // process percepts
+		// parse cell content data
 
-        int posX = Integer.parseInt(perception.getAttribute("posx"));
-        int posY = Integer.parseInt(perception.getAttribute("posy"));
+		Collection<CellPercept> cellPercepts = new LinkedList<CellPercept>();
 
-        if (positonChagnedCallback != null) {
-            positonChagnedCallback.positionChanged(new Position(posX, posY));
-        }
+		NodeList nodeList = perception.getElementsByTagName("cell");
 
-        int cowsInCorral = Integer.parseInt(perception.getAttribute("cowsInCorral"));
+		for (int i = 0; i < nodeList.getLength(); i++) {
+			Node node = nodeList.item(i);
+			if (node.getNodeType() == Node.ELEMENT_NODE) {
+				Element element = (Element) node;
 
-        int step = Integer.parseInt(perception.getAttribute("step"));
+				int x = Integer.parseInt(element.getAttribute("x"));
+				int y = Integer.parseInt(element.getAttribute("y"));
 
+				NodeList children = element.getChildNodes();
+				Element childElement;
 
-        // parse cell content data
+				boolean obstacle = false;
+				boolean agent = false;
+				boolean cow = false;
+				int cowId = -1;
+				boolean corral = false;
+				boolean fenceSwitch = false;
+				boolean openFence = false;
+				boolean closedFence = false;
+				boolean empty = false;
 
-        Collection<CellPercept> cellPercepts = new LinkedList<CellPercept>();
+				for (int j = 0; j < children.getLength(); j++) {
+					if (children.item(j).getNodeType() == Node.ELEMENT_NODE) {
+						childElement = (Element) children.item(j);
+						String elementName = childElement.getNodeName();
 
-        NodeList nodeList = perception.getElementsByTagName("cell");
+						if (elementName.equals("agent")) {
+							agent = true;
+						}
+						if (elementName.equals("obstacle")) {
+							obstacle = true;
+						}
+						if (elementName.equals("cow")) {
+							cow = true;
+							cowId = Integer.parseInt(childElement.getAttribute("ID"));
+						}
+						if (elementName.equals("corral")) {
+							corral = true;
+						}
+						if (elementName.equals("switch")) {
+							fenceSwitch = true;
+						}
+						if (elementName.equals("fence")) {
+							boolean open = Boolean.parseBoolean(childElement.getAttribute("open"));
+							if (open) {
+								openFence = true;
+							}
+							else {
+								closedFence = true;
+							}
+						}
+						if (elementName.equals("empty")) {
+							empty = true;
+						}
+					}
+				}
 
-        for (int i=0; i < nodeList.getLength(); i++) {
-            Node node = nodeList.item(i);
-            if (node.getNodeType() == Node.ELEMENT_NODE) {
-                Element element = (Element) node;
+				cellPercepts.add(new CellPercept(x, y, obstacle, agent, cow, cowId, corral, fenceSwitch, openFence, closedFence, empty));
+			}
+		}
 
-                int x = Integer.parseInt(element.getAttribute("x"));
-                int y = Integer.parseInt(element.getAttribute("y"));
+		MASPerception percept = new MASPerception(posX, posY, cowsInCorral, step, cellPercepts);
 
-                CellContent cellContent = CellContent.UNKNOWN;
+		Action action = deliberate(percept);
 
-                NodeList children = element.getChildNodes();
-                Element childElement = null;
+		target.setAttribute("type", action.toString().toLowerCase());
+	}
 
-                boolean obstacle = false;
-                boolean agent = false;
-                boolean cow = false;
-                int cowId = -1;
-                boolean corral = false;
-                boolean fenceSwitch = false;
-                boolean openFence = false;
-                boolean closedFence = false;
-                boolean empty = false;
+	protected abstract Action deliberate(MASPerception percept);
 
-                for (int j=0; j<children.getLength(); j++) {
-                    if (children.item(j).getNodeType() == Node.ELEMENT_NODE) {
-                        childElement = (Element) children.item(j);
-                        String elementName = childElement.getNodeName();
+	public int getNoOfAgents() {
+		return nAgents;
+	}
 
-                        if (elementName.equals("agent")) {
-                            agent = true;
-                        }
-
-                        if (elementName.equals("obstacle")) {
-                            obstacle = true;
-                        }
-
-                        if (elementName.equals("cow")) {
-                            cow = true;
-                            cowId = Integer.parseInt(childElement.getAttribute("ID"));
-                        }
-
-                        if (elementName.equals("corral")) {
-                            corral = true;
-                        }
-
-                        if (elementName.equals("switch")) {
-                            fenceSwitch = true;
-                        }
-
-                        if (elementName.equals("fence")) {
-                            boolean open = Boolean.parseBoolean(childElement.getAttribute("open"));
-                            if (open) {
-                                openFence = true;
-                            } else {
-                                closedFence = true;
-                            }
-                        }
-
-                        if (elementName.equals("empty")) {
-                            empty = true;
-                        }
-                    }
-                }
-
-                cellPercepts.add(new CellPercept(x, y, obstacle, agent, cow, cowId, corral, fenceSwitch, openFence, closedFence, empty));
-
-            }
-        }
-
-        MASPerception percept = new MASPerception(posX, posY, cowsInCorral, step, cellPercepts);
-
-        Action action = deliberate(percept);
-
-        target.setAttribute("type", action.toString().toLowerCase());
-    }
-
-   abstract protected Action deliberate(MASPerception percept);
-
-   public int getNoOfAgents() {
-       return nAgents;
-   }
-
-   public void registerPositionChangedCallback(OnPositionChangedCallback callback) {
-       this.positonChagnedCallback = callback;
-   }
-
+	public void registerPositionChangedCallback(OnPositionChangedCallback callback) {
+		this.positonChagnedCallback = callback;
+	}
 
 }
