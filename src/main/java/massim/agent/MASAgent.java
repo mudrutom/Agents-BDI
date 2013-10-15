@@ -24,7 +24,7 @@ public abstract class MASAgent extends AbstractAgent implements MessageHandler {
 	List<Message> inbox = new LinkedList<Message>();
 	int nAgents;
 
-	private OnPositionChangedCallback positonChagnedCallback;
+	private OnPositionChangedCallback positionChangedCallback;
 
 	public MASAgent(String host, int port, String username, String password) {
 		this.setUsername(username);
@@ -90,8 +90,8 @@ public abstract class MASAgent extends AbstractAgent implements MessageHandler {
 		int posX = Integer.parseInt(perception.getAttribute("posx"));
 		int posY = Integer.parseInt(perception.getAttribute("posy"));
 
-		if (positonChagnedCallback != null) {
-			positonChagnedCallback.positionChanged(new Position(posX, posY));
+		if (positionChangedCallback != null) {
+			positionChangedCallback.positionChanged(new Position(posX, posY));
 		}
 
 		int cowsInCorral = Integer.parseInt(perception.getAttribute("cowsInCorral"));
@@ -179,7 +179,7 @@ public abstract class MASAgent extends AbstractAgent implements MessageHandler {
 	}
 
 	public void registerPositionChangedCallback(OnPositionChangedCallback callback) {
-		this.positonChagnedCallback = callback;
+		this.positionChangedCallback = callback;
 	}
 
 }

@@ -13,45 +13,41 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
-public class MyAgent extends MASAgent {
+/**
+ * MAS agent implementation using BDI architecture.
+ */
+public class MyAgent extends MASAgent implements GameConstants {
 
-	/** The number of friend agents. */
-	protected static final int FRIENDS = 2;
+	private static final boolean INFO = true, DEBUG = true, VERBOSE = false;
 
-	/** The checkpoints the agent needs to visit. */
-	protected static final Position[] CHECKPOINTS = {
-			new Position(2,2), new Position(27,2), new Position(27,27), new Position(2,27)
-	};
-
-	/** Possible agents' actions. */
-	protected static final Action[] ACTIONS = {
-			Action.NORTH, Action.NORTHEAST, Action.EAST, Action.SOUTHEAST,
-			Action.SOUTH, Action.SOUTHWEST, Action.WEST, Action.NORTHWEST,
-			Action.SKIP
-	};
-
-	/** Mata-data about agents' friends. */
+	/** Meta-data about agents' friends. */
 	private final Map<String, AgentMetadata> friendMetadata;
 
 	/** Agents' random generator. */
 	private final Random random;
 
-	/** Current state of the agent. */
-	private AgentState state;
-
+	/** Agents' number. */
+	private Long myNumber;
 	/** Agents' leader flag. */
 	private Boolean isLeader;
 
-	/** Agents' number. */
-	private Long myNumber;
+	/** Current state of the agent. */
+	private AgentState state;
+	/** Current state of the map. */
+	private GameMap map;
+	/** Current positions of the agent, */
+	private Position myPosition;
 
-	private Position myPosition, desiredPosition;
+	/** Agents' desired position. */
+	private Position desiredPosition;
 
+	/** Constructor of the MyAgent class. */
 	public MyAgent(String host, int port, String username, String password) {
 		super(host, port, username, password);
 		friendMetadata = new LinkedHashMap<String, AgentMetadata>(FRIENDS);
 		random = new Random(System.nanoTime());
 		state = AgentState.init;
+		map = null;
 		isLeader = null;
 		myNumber = null;
 		myPosition = null;
@@ -60,12 +56,17 @@ public class MyAgent extends MASAgent {
 
 	@Override
 	protected void onStart(int gridWidth, int gridHeight, int visibility) {
-		System.out.println(getUsername() + ": The world is " + gridWidth + " cells wide and " + gridHeight + " cells high.");
+		printInfo("gridWidth=" + gridWidth + " gridHeight=" + gridHeight + " visibility=" + visibility);
+		map = new GameMap(gridWidth, gridHeight);
 	}
 
     @Override
     protected Action deliberate(MASPerception percept) {
+		printVerbose("step=" + percept.getStep());
+
 		myPosition = new Position(percept.getPosX(), percept.getPosY());
+		map.refresh(myPosition, percept.getCellPercepts());
+
 		processMessages();
 
 		final Action action;
@@ -86,6 +87,7 @@ public class MyAgent extends MASAgent {
 	/** Resets the agent into the initial state. */
 	protected void reset() {
 		friendMetadata.clear();
+		map.init();
 		setState(AgentState.init);
 		isLeader = null;
 		myNumber = null;
@@ -119,7 +121,7 @@ public class MyAgent extends MASAgent {
 			} else if ("goto".equals(data.getType())) {
 				desiredPosition = data.getPosition();
 			}
-			System.out.println(getUsername() + ": [" + message.getSender() + " " + data.getType() + "] " +
+			printDebug("[" + message.getSender() + " " + data.getType() + "] " +
 					data.getString() + " " + data.getNumber() + " " + data.getBool() + " " + data.getPosition());
 		}
 	}
@@ -158,15 +160,22 @@ public class MyAgent extends MASAgent {
 	private Action doWalk() {
 		if (isLeader) {
 			if (desiredPosition == null) {
-				broadcast(MessageUtils.create("goto", new Position(1, 1)));
+				printDebug("map:\n" + map.toString());
+				final List<Position> switches = map.findAllSwitches();
+				if (!switches.isEmpty()) {
+					broadcast(MessageUtils.create("goto", switches.get(0)));
+				} else {
+					broadcast(MessageUtils.create("goto", CHECKPOINTS[0]));
+				}
 				desiredPosition = myPosition;
 			}
 		} else {
 			if (myPosition.equals(desiredPosition)) {
+				printDebug("map:\n" + map.toString());
 				broadcast(MessageUtils.create("position", myPosition));
 				setState(AgentState.idle);
 			} else if (desiredPosition != null) {
-				return getAction(myPosition, desiredPosition);
+				return GameMap.getAction(myPosition, desiredPosition);
 			}
 		}
 		return Action.SKIP;
@@ -182,23 +191,18 @@ public class MyAgent extends MASAgent {
 		broadcast(MessageUtils.create("myState", state.name()));
 	}
 
-	/** @return Action to get form one position to the other. */
-	protected Action getAction(Position fromPos, Position toPos) {
-		final int fromX = fromPos.getX(), fromY = fromPos.getY();
-		final int toX = toPos.getX(), toY = toPos.getY();
+	/** Prints given message to STD-OUT if in INFO mode. */
+	protected void printInfo(String message) {
+		if (INFO) System.out.println(username + ": " + message);
+	}
 
-		if (fromX == toX && fromY == toY) {
-			return Action.SKIP;
-		} else if (fromX == toX) {
-			return (fromY < toY) ? Action.SOUTH : Action.NORTH;
-		} else if (fromY == toY) {
-			return (fromX < toX) ? Action.EAST : Action.WEST;
-		} else {
-			if (fromX < toX) {
-				return (fromY < toY) ? Action.SOUTHEAST : Action.NORTHEAST;
-			} else {
-				return (fromY < toY) ? Action.SOUTHWEST : Action.NORTHWEST;
-			}
-		}
+	/** Prints given message to STD-OUT if in DEBUG mode. */
+	protected void printDebug(String message) {
+		if (DEBUG) System.out.println(username + "@" + state + ": " + message);
+	}
+
+	/** Prints given message to STD-OUT if in VERBOSE mode. */
+	protected void printVerbose(String message) {
+		if (VERBOSE) System.out.println(username + ": " + message);
 	}
 }
