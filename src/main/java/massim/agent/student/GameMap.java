@@ -6,7 +6,6 @@ import massim.agent.Position;
 
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -16,7 +15,7 @@ import java.util.List;
 public class GameMap implements GameConstants {
 
 	/** Map cells content constants. */
-	public static final char FREE = ' ', WALL = '#', FENCE = '+', FENCE_OPEN = '.', SWITCH = 'O', AGENT = 'A';
+	public static final char FREE = ' ', WALL = '#', FENCE = '+', FENCE_OPEN = '.', SWITCH = '%', AGENT = '@', UNKNOWN = '*';
 
 	/** The map cells. */
 	private final char map[][];
@@ -30,7 +29,7 @@ public class GameMap implements GameConstants {
 	/** Initializes new map. */
 	public void init() {
 		for (char[] column : map) {
-			Arrays.fill(column, WALL);
+			Arrays.fill(column, UNKNOWN);
 		}
 	}
 
@@ -51,6 +50,8 @@ public class GameMap implements GameConstants {
 				map[x][y] = SWITCH;
 			} else if (cell.containsAgent()) {
 				map[x][y] = AGENT;
+			} else {
+				map[x][y] = UNKNOWN;
 			}
 		}
 	}
@@ -68,12 +69,29 @@ public class GameMap implements GameConstants {
 		return switches;
 	}
 
-	public List<Action> planPath(Position fromPos, Position toPos) {
-		// TODO plan the path
-		return Collections.emptyList();
+	/** Returns the position before given switch for given agent. */
+	public Position getPositionBeforeSwitch(Position agentPos, Position switchPos) {
+		final int x = switchPos.getX(), y = switchPos.getY();
+		final char northOfSwitch = map[x][y - 1];
+		if (northOfSwitch == FREE) {
+			return (agentPos.getY() < y) ? new Position(x, y - 1) : new Position(x, y + 1);
+		} else {
+			return (agentPos.getX() < x) ? new Position(x - 1, y) : new Position(x + 1, y);
+		}
 	}
 
-	/** Returns the map as a string */
+	/** Plans the next move from one position to the other. */
+	public Action planMove(Position fromPos, Position toPos) {
+		Action action = getAction(fromPos, toPos);
+		Position next = move(fromPos, action);
+		while (map[next.getX()][next.getY()] != FREE) {
+			action = next(action);
+			next = move(fromPos, action);
+		}
+		return action;
+	}
+
+	/** Returns the map as a string. */
 	public String toString() {
 		final StringBuilder sb = new StringBuilder(map.length + map.length * map[0].length);
 		for (int row = 0, height = map[0].length; row < height; row++) {
@@ -105,7 +123,7 @@ public class GameMap implements GameConstants {
 		}
 	}
 
-	/** Returns new position after on move. */
+	/** Returns new position after the one move. */
 	public static Position move(Position position, Action action) {
 		final int x = position.getX(), y = position.getY();
 		switch (action) {
@@ -118,6 +136,21 @@ public class GameMap implements GameConstants {
 			case SOUTHWEST: return new Position(x - 1, y + 1);
 			case SOUTHEAST: return new Position(x + 1, y + 1);
 			default: return position;
+		}
+	}
+
+	/** Returns the next action after the given action. */
+	public static Action next(Action action) {
+		switch (action) {
+			case NORTH: return Action.NORTHEAST;
+			case NORTHEAST: return Action.EAST;
+			case EAST: return Action.SOUTHEAST;
+			case SOUTHEAST: return Action.SOUTH;
+			case SOUTH: return Action.SOUTHWEST;
+			case SOUTHWEST: return Action.WEST;
+			case WEST: return Action.NORTHWEST;
+			case NORTHWEST: return Action.NORTH;
+			default: return Action.SKIP;
 		}
 	}
 }

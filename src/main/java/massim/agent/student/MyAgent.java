@@ -163,7 +163,8 @@ public class MyAgent extends MASAgent implements GameConstants {
 				printDebug("map:\n" + map.toString());
 				final List<Position> switches = map.findAllSwitches();
 				if (!switches.isEmpty()) {
-					broadcast(MessageUtils.create("goto", switches.get(0)));
+					final Position positionBeforeSwitch = map.getPositionBeforeSwitch(myPosition, switches.get(0));
+					broadcast(MessageUtils.create("goto", positionBeforeSwitch));
 				} else {
 					broadcast(MessageUtils.create("goto", CHECKPOINTS[0]));
 				}
@@ -175,7 +176,7 @@ public class MyAgent extends MASAgent implements GameConstants {
 				broadcast(MessageUtils.create("position", myPosition));
 				setState(AgentState.idle);
 			} else if (desiredPosition != null) {
-				return GameMap.getAction(myPosition, desiredPosition);
+				return map.planMove(myPosition, desiredPosition);
 			}
 		}
 		return Action.SKIP;
