@@ -8,7 +8,9 @@ import massim.agent.Position;
 import massim.agent.student.utils.MessageData;
 import massim.agent.student.utils.MessageUtils;
 
+import java.util.Deque;
 import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -20,11 +22,14 @@ public class MyAgent extends MASAgent implements GameConstants {
 
 	private static final boolean INFO = true, DEBUG = true, VERBOSE = false;
 
+	/** Agents' random generator. */
+	private final Random random;
+
 	/** Meta-data about agents' friends. */
 	private final Map<String, AgentMetadata> friendMetadata;
 
-	/** Agents' random generator. */
-	private final Random random;
+	/** Agents' desired positions. */
+	private final Deque<Position> desiredPositions;
 
 	/** Agents' number. */
 	private Long myNumber;
@@ -35,23 +40,23 @@ public class MyAgent extends MASAgent implements GameConstants {
 	private AgentState state;
 	/** Current state of the map. */
 	private GameMap map;
-	/** Current positions of the agent, */
+	/** Current position of the agent. */
 	private Position myPosition;
-
-	/** Agents' desired position. */
-	private Position desiredPosition;
+	/** Current position the agent intend to visit. */
+	private Position intendedPosition;
 
 	/** Constructor of the MyAgent class. */
 	public MyAgent(String host, int port, String username, String password) {
 		super(host, port, username, password);
-		friendMetadata = new LinkedHashMap<String, AgentMetadata>(FRIENDS);
 		random = new Random(System.nanoTime());
+		friendMetadata = new LinkedHashMap<String, AgentMetadata>(FRIENDS);
+		desiredPositions = new LinkedList<Position>(CHECKPOINTS);
+		myNumber = null;
+		isLeader = null;
 		state = AgentState.init;
 		map = null;
-		isLeader = null;
-		myNumber = null;
 		myPosition = null;
-		desiredPosition = null;
+		intendedPosition = null;
 	}
 
 	@Override
@@ -77,6 +82,9 @@ public class MyAgent extends MASAgent implements GameConstants {
 			case ready:
 				action = doWalk();
 				break;
+			case finished:
+				action = Action.SKIP;
+				break;
 			case idle:
 			default:
 				action = doRandomWalk();
@@ -84,15 +92,17 @@ public class MyAgent extends MASAgent implements GameConstants {
         return action;
     }
 
-	/** Resets the agent into the initial state. */
+	/** Resets the agent into its initial state. */
 	protected void reset() {
 		friendMetadata.clear();
-		map.init();
-		setState(AgentState.init);
-		isLeader = null;
+		desiredPositions.clear();
+		desiredPositions.addAll(CHECKPOINTS);
 		myNumber = null;
+		isLeader = null;
+		setState(AgentState.init);
+		map.init();
 		myPosition = null;
-		desiredPosition = null;
+		intendedPosition = null;
 	}
 
 	/** Processing of the messages in agents' inbox. */
@@ -119,7 +129,7 @@ public class MyAgent extends MASAgent implements GameConstants {
 			} else if ("position".equals(data.getType())) {
 				metadata.position = data.getPosition();
 			} else if ("goto".equals(data.getType())) {
-				desiredPosition = data.getPosition();
+				desiredPositions.addFirst(data.getPosition());
 			}
 			printDebug("[" + message.getSender() + " " + data.getType() + "] " +
 					data.getString() + " " + data.getNumber() + " " + data.getBool() + " " + data.getPosition());
@@ -159,24 +169,29 @@ public class MyAgent extends MASAgent implements GameConstants {
 
 	private Action doWalk() {
 		if (isLeader) {
-			if (desiredPosition == null) {
+			if (intendedPosition == null) {
 				printDebug("map:\n" + map.toString());
 				final List<Position> switches = map.findAllSwitches();
 				if (!switches.isEmpty()) {
 					final Position positionBeforeSwitch = map.getPositionBeforeSwitch(myPosition, switches.get(0));
 					broadcast(MessageUtils.create("goto", positionBeforeSwitch));
-				} else {
-					broadcast(MessageUtils.create("goto", CHECKPOINTS[0]));
 				}
-				desiredPosition = myPosition;
+				intendedPosition = myPosition;
 			}
 		} else {
-			if (myPosition.equals(desiredPosition)) {
+			if (intendedPosition == null && desiredPositions.isEmpty()) {
+				printInfo("FINISHED");
+				setState(AgentState.finished);
+			} else if (intendedPosition == null) {
+				intendedPosition = desiredPositions.removeFirst();
+				printDebug("new intention " + intendedPosition);
+				return map.planMove(myPosition, intendedPosition);
+			} else if (myPosition.equals(intendedPosition)) {
+				intendedPosition = null;
 				printDebug("map:\n" + map.toString());
 				broadcast(MessageUtils.create("position", myPosition));
-				setState(AgentState.idle);
-			} else if (desiredPosition != null) {
-				return map.planMove(myPosition, desiredPosition);
+			} else {
+				return map.planMove(myPosition, intendedPosition);
 			}
 		}
 		return Action.SKIP;

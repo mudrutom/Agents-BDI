@@ -6,6 +6,7 @@ import massim.agent.Position;
 
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -84,7 +85,7 @@ public class GameMap implements GameConstants {
 	public Action planMove(Position fromPos, Position toPos) {
 		Action action = getAction(fromPos, toPos);
 		Position next = move(fromPos, action);
-		while (map[next.getX()][next.getY()] != FREE) {
+		while (map[next.getX()][next.getY()] != FREE && map[next.getX()][next.getY()] != FENCE_OPEN) {
 			action = next(action);
 			next = move(fromPos, action);
 		}
@@ -152,5 +153,19 @@ public class GameMap implements GameConstants {
 			case NORTHWEST: return Action.NORTH;
 			default: return Action.SKIP;
 		}
+	}
+
+	/** Returns new distance comparator for given point. */
+	public static Comparator<Position> getDistanceComparator(Position position) {
+		final int x = position.getX(), y = position.getY();
+		return new Comparator<Position>() {
+			@Override
+			public int compare(Position one, Position two) {
+				// Manhattan distance
+				final int distOne = Math.max(Math.abs(x - one.getX()), Math.abs(y - one.getY()));
+				final int distTwo = Math.max(Math.abs(x - two.getX()), Math.abs(y - two.getY()));
+				return distOne - distTwo;
+			}
+		};
 	}
 }

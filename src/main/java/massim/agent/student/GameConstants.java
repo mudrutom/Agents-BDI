@@ -3,6 +3,9 @@ package massim.agent.student;
 import massim.agent.Action;
 import massim.agent.Position;
 
+import java.util.Arrays;
+import java.util.List;
+
 /**
  * Contains the constant of the game (problem).
  */
@@ -12,9 +15,9 @@ public interface GameConstants {
 	public static final int FRIENDS = 2;
 
 	/** The checkpoints any agent needs to visit. */
-	public static final Position[] CHECKPOINTS = {
-			new Position(2,2), new Position(27,2), new Position(27,27), new Position(2,27)
-	};
+	public static final List<Position> CHECKPOINTS = Arrays.asList(
+			new Position(2, 2), new Position(27, 2), new Position(27, 27), new Position(2, 27)
+	);
 
 	/** Possible actions of the agents. */
 	public static final Action[] ACTIONS = {
