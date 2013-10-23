@@ -282,7 +282,6 @@ public class MyAgent extends MASAgent implements GameConstants {
 				setState(AgentState.ready);
 			} else {
 				intendedPosition = desiredPositions.poll();
-				printDebug("new intention " + intendedPosition);
 				return map.planMove(myPosition, intendedPosition);
 			}
 		} else if (myPosition.equals(intendedPosition)) {
@@ -308,6 +307,7 @@ public class MyAgent extends MASAgent implements GameConstants {
 			final Fence fence = new Fence(nextPosition, scoutDirection);
 			fence.setOpened(true);
 			broadcast(MessageUtils.create("foundFence", fence));
+			broadcast(MessageUtils.create("myPosition", myPosition));
 			setState(AgentState.waiting);
 			return Action.SKIP;
 		}
