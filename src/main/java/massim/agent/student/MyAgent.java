@@ -5,6 +5,9 @@ import massim.agent.Action;
 import massim.agent.MASAgent;
 import massim.agent.MASPerception;
 import massim.agent.Position;
+import massim.agent.student.game.Fence;
+import massim.agent.student.game.GameConstants;
+import massim.agent.student.game.GameMap;
 import massim.agent.student.utils.MessageData;
 import massim.agent.student.utils.MessageUtils;
 
@@ -20,7 +23,7 @@ import java.util.Random;
  */
 public class MyAgent extends MASAgent implements GameConstants {
 
-	private static final boolean INFO = true, DEBUG = true, VERBOSE = true;
+	private static final boolean INFO = true, DEBUG = true, VERBOSE = false;
 
 	/** Agents' random generator. */
 	private final Random random;
@@ -46,8 +49,8 @@ public class MyAgent extends MASAgent implements GameConstants {
 	private Position myPosition;
 	/** Current position the agent intend to visit. */
 	private Position intendedPosition;
-	/** Position of current fence switch. */
-	private Position currentSwitch;
+	/** Current fence to be passed through. */
+	private Fence currentFence;
 
 	/** Constructor of the MyAgent class. */
 	public MyAgent(String host, int port, String username, String password) {
@@ -62,12 +65,13 @@ public class MyAgent extends MASAgent implements GameConstants {
 		map = null;
 		myPosition = null;
 		intendedPosition = null;
-		currentSwitch = null;
+		currentFence = null;
 	}
 
 	@Override
 	protected void onStart(int gridWidth, int gridHeight, int visibility) {
-		printInfo("gridWidth=" + gridWidth + " gridHeight=" + gridHeight + " visibility=" + visibility);
+		printInfo("START");
+		printDebug("gridWidth=" + gridWidth + " gridHeight=" + gridHeight + " visibility=" + visibility);
 		map = new GameMap(gridWidth, gridHeight);
 	}
 
@@ -122,7 +126,7 @@ public class MyAgent extends MASAgent implements GameConstants {
 		map.init();
 		myPosition = null;
 		intendedPosition = null;
-		currentSwitch = null;
+		currentFence = null;
 	}
 
 	/** Processing of the messages in agents' inbox. */
@@ -153,6 +157,8 @@ public class MyAgent extends MASAgent implements GameConstants {
 				metadata.number = MessageUtils.getData(data);
 			} else if ("leader".equals(type)) {
 				metadata.isLeader = MessageUtils.getData(data);
+			} else if ("foundFence".equals(type)) {
+				currentFence = MessageUtils.getData(data);
 			}
 
 			if (isLeader == Boolean.FALSE) {
@@ -167,20 +173,35 @@ public class MyAgent extends MASAgent implements GameConstants {
 	/** Sends appropriate leader commands. */
 	private void sendCommands() {
 		// leader self-commands
-		if (intendedPosition == null) {
-			intendedPosition = myCheckpoints.poll();
+		if (state == AgentState.idle) {
+			desiredPositions.add(new Position(5, 5));
 			setState(AgentState.walking);
 		}
 
-		// commands for the followers
+		AgentMetadata scout = null, follower = null;
 		for (AgentMetadata metadata : friendMetadata.values()) {
-			if (metadata.state == AgentState.ready) {
-				if (metadata.isScout == Boolean.TRUE) {
-					sendMessage(metadata.getName(), MessageUtils.create("findSwitch"));
-				} else {
-					sendMessage(metadata.getName(), MessageUtils.create("walk"));
-				}
+			if (metadata.isScout == Boolean.TRUE) {
+				scout = metadata;
+			} else {
+				follower = metadata;
 			}
+		}
+		if (scout == null || follower == null) return;
+
+		// commands for the scout agent
+		if (scout.state == AgentState.ready || scout.state == AgentState.idle) {
+			sendMessage(scout.getName(), MessageUtils.create("scout"));
+			scout.state = AgentState.scouting;
+		}
+		if (scout.state == AgentState.waiting && follower.state == AgentState.ready) {
+			sendMessage(scout.getName(), MessageUtils.create("goto", currentFence.getPositionAfterFence()));
+			scout.state = AgentState.walking;
+		}
+
+		// commands for the follower agent
+		if (follower.state == AgentState.idle) {
+			sendMessage(follower.getName(), MessageUtils.create("goto", myCheckpoints.peek()));
+			follower.state = AgentState.walking;
 		}
 	}
 
@@ -189,11 +210,8 @@ public class MyAgent extends MASAgent implements GameConstants {
 		final String type = data.getType();
 		if ("goto".equals(type)) {
 			desiredPositions.add(MessageUtils.<Position>getData(data));
-			setState(AgentState.ready);
-		} else if ("walk".equals(type)) {
-			intendedPosition = myCheckpoints.poll();
 			setState(AgentState.walking);
-		} else if ("findSwitch".equals(type)) {
+		} else if ("scout".equals(type)) {
 			setState(AgentState.scouting);
 		}
 	}
@@ -201,8 +219,14 @@ public class MyAgent extends MASAgent implements GameConstants {
 	/** Processing of messages from the followers. */
 	private void processFollowerMessage(MessageData data, AgentMetadata follower) {
 		final String type = data.getType();
-		if ("foundSwitch".equals(type)) {
-			final Position foundSwitch = MessageUtils.getData(data);
+		if ("foundFence".equals(type)) {
+			final Position after = currentFence.getPositionAfterSwitch();
+			for (AgentMetadata metadata : friendMetadata.values()) {
+				if (metadata.isScout == Boolean.FALSE) {
+					sendMessage(metadata.getName(), MessageUtils.create("goto", after));
+					metadata.state = AgentState.walking;
+				}
+			}
 		}
 	}
 
@@ -231,7 +255,7 @@ public class MyAgent extends MASAgent implements GameConstants {
 			if (count == FRIENDS) {
 				isLeader = (myNumber.compareTo(max) == 0);
 				broadcast(MessageUtils.create("leader", isLeader));
-				setState(AgentState.ready);
+				setState(AgentState.idle);
 
 				if (isLeader) {
 					// determine the scout agent
@@ -274,6 +298,16 @@ public class MyAgent extends MASAgent implements GameConstants {
 	/** Agents' scouting mode. */
 	private Action doScouting() {
 		final Action scoutDirection = map.getScoutDirection(myPosition);
+		final Position nextPosition = GameMap.move(myPosition, scoutDirection);
+
+		// test for fence switch
+		if (map.get(nextPosition) == GameMap.SWITCH) {
+			final Fence fence = new Fence(nextPosition, scoutDirection);
+			fence.setOpened(true);
+			broadcast(MessageUtils.create("foundFence", fence));
+			setState(AgentState.waiting);
+			return Action.SKIP;
+		}
 
 		return scoutDirection;
 	}

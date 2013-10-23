@@ -1,4 +1,4 @@
-package massim.agent.student;
+package massim.agent.student.game;
 
 import massim.agent.Action;
 import massim.agent.Position;

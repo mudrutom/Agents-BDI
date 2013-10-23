@@ -1,4 +1,4 @@
-package massim.agent.student;
+package massim.agent.student.game;
 
 import massim.agent.Action;
 import massim.agent.CellPercept;
@@ -7,8 +7,6 @@ import massim.agent.Position;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.LinkedList;
-import java.util.List;
 
 /**
  * Representation of the game map with utility methods.
@@ -57,28 +55,9 @@ public class GameMap implements GameConstants {
 		}
 	}
 
-	/** Finds all fence switches in the map. */
-	public List<Position> findAllSwitches() {
-		final List<Position> switches = new LinkedList<Position>();
-		for (int col = 0, width = map.length; col < width; col++) {
-			for (int row = 0, height = map[col].length; row < height; row++) {
-				if (map[col][row] == SWITCH) {
-					switches.add(new Position(col, row));
-				}
-			}
-		}
-		return switches;
-	}
-
-	/** Returns the position before given switch for given agent. */
-	public Position getPositionBeforeSwitch(Position agentPos, Position switchPos) {
-		final int x = switchPos.getX(), y = switchPos.getY();
-		final char northOfSwitch = map[x][y - 1];
-		if (northOfSwitch == FREE) {
-			return (agentPos.getY() < y) ? new Position(x, y - 1) : new Position(x, y + 1);
-		} else {
-			return (agentPos.getX() < x) ? new Position(x - 1, y) : new Position(x + 1, y);
-		}
+	/** Returns a map cell at given position. */
+	public char get(Position position) {
+		return map[position.getX()][position.getY()];
 	}
 
 	/** Plans the next move from one position to the other. */
@@ -166,20 +145,35 @@ public class GameMap implements GameConstants {
 	/** Returns the next action after the given action. */
 	public static Action next(Action action) {
 		switch (action) {
-			case NORTH: return Action.NORTHEAST;
+			case NORTH: return Action.EAST;
 			case NORTHEAST: return Action.EAST;
-			case EAST: return Action.SOUTHEAST;
+			case EAST: return Action.SOUTH;
 			case SOUTHEAST: return Action.SOUTH;
-			case SOUTH: return Action.SOUTHWEST;
+			case SOUTH: return Action.WEST;
 			case SOUTHWEST: return Action.WEST;
-			case WEST: return Action.NORTHWEST;
+			case WEST: return Action.NORTH;
 			case NORTHWEST: return Action.NORTH;
 			default: return Action.SKIP;
 		}
 	}
 
+	/** Returns the inverse action for the given action. */
+	public static Action inverse(Action action) {
+		switch (action) {
+			case NORTH: return Action.SOUTH;
+			case NORTHEAST: return Action.SOUTHWEST;
+			case EAST: return Action.WEST;
+			case SOUTHEAST: return Action.NORTHWEST;
+			case SOUTH: return Action.NORTH;
+			case SOUTHWEST: return Action.NORTHEAST;
+			case WEST: return Action.EAST;
+			case NORTHWEST: return Action.SOUTHEAST;
+			default: return Action.SKIP;
+		}
+	}
+
 	/** Returns new distance comparator for given point. */
-	public static Comparator<Position> getDistanceComparator(Position position) {
+	public static Comparator<Position> distanceComparator(Position position) {
 		final int x = position.getX(), y = position.getY();
 		return new Comparator<Position>() {
 			@Override
