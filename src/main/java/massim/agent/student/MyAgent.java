@@ -8,6 +8,7 @@ import massim.agent.Position;
 import massim.agent.student.utils.MessageData;
 import massim.agent.student.utils.MessageUtils;
 
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
@@ -30,6 +31,8 @@ public class MyAgent extends MASAgent implements GameConstants {
 
 	/** Agents' desired positions. */
 	private final Deque<Position> desiredPositions;
+	/** Agents' checkpoints to visit. */
+	private final List<Position> myCheckpoints;
 
 	/** Agents' number. */
 	private Long myNumber;
@@ -50,7 +53,8 @@ public class MyAgent extends MASAgent implements GameConstants {
 		super(host, port, username, password);
 		random = new Random(System.nanoTime());
 		friendMetadata = new LinkedHashMap<String, AgentMetadata>(FRIENDS);
-		desiredPositions = new LinkedList<Position>(CHECKPOINTS);
+		desiredPositions = new LinkedList<Position>();
+		myCheckpoints = new ArrayList<Position>(CHECKPOINTS);
 		myNumber = null;
 		isLeader = null;
 		state = AgentState.init;
@@ -96,7 +100,6 @@ public class MyAgent extends MASAgent implements GameConstants {
 	protected void reset() {
 		friendMetadata.clear();
 		desiredPositions.clear();
-		desiredPositions.addAll(CHECKPOINTS);
 		myNumber = null;
 		isLeader = null;
 		setState(AgentState.init);
@@ -121,18 +124,17 @@ public class MyAgent extends MASAgent implements GameConstants {
 			if ("reset".equals(data.getType())) {
 				reset();
 			} else if ("myState".equals(data.getType())) {
-				metadata.state = AgentState.valueOf(data.getString());
+				metadata.state = MessageUtils.getData(data);
 			} else if ("myNumber".equals(data.getType())) {
-				metadata.number = data.getNumber();
+				metadata.number = MessageUtils.getData(data);
 			} else if ("leader".equals(data.getType())) {
-				metadata.isLeader = data.getBool();
+				metadata.isLeader = MessageUtils.getData(data);
 			} else if ("position".equals(data.getType())) {
-				metadata.position = data.getPosition();
+				metadata.position = MessageUtils.getData(data);
 			} else if ("goto".equals(data.getType())) {
-				desiredPositions.addFirst(data.getPosition());
+				desiredPositions.addFirst(MessageUtils.<Position>getData(data));
 			}
-			printDebug("[" + message.getSender() + " " + data.getType() + "] " +
-					data.getString() + " " + data.getNumber() + " " + data.getBool() + " " + data.getPosition());
+			printDebug("[" + message.getSender() + " " + data.getType() + "] " + data.getData());
 		}
 	}
 
@@ -204,7 +206,7 @@ public class MyAgent extends MASAgent implements GameConstants {
 	/** @param state new state of the agent */
 	protected void setState(AgentState state) {
 		this.state = state;
-		broadcast(MessageUtils.create("myState", state.name()));
+		broadcast(MessageUtils.create("myState", state));
 	}
 
 	/** Prints given message to STD-OUT if in INFO mode. */

@@ -1,42 +1,37 @@
 package massim.agent.student.utils;
 
-import massim.agent.Position;
-
 import java.io.Serializable;
 
-public class MessageData implements Serializable {
+/**
+ * Message data container class.
+ */
+public class MessageData<T> implements Serializable {
+
+	private static final long serialVersionUID = -8701920249370513743L;
 
 	private final String type;
-	private final String string;
-	private final Long number;
-	private final Boolean bool;
-	private final Position position;
+	private final Class<T> clazz;
+	private final T data;
 
-	public MessageData(String type, String string, Long number, Boolean bool, Position position) {
+	/** Constructor of the MessageData class. */
+	public MessageData(String type, Class<T> clazz, T data) {
 		this.type = type;
-		this.string = string;
-		this.number = number;
-		this.bool = bool;
-		this.position = position;
+		this.clazz = clazz;
+		this.data = data;
 	}
 
+	/** Returns type string of the message. */
 	public String getType() {
 		return type;
 	}
 
-	public String getString() {
-		return string;
+	/** Returns class type of the message data. */
+	public Class<T> getClazz() {
+		return clazz;
 	}
 
-	public Long getNumber() {
-		return number;
-	}
-
-	public Boolean getBool() {
-		return bool;
-	}
-
-	public Position getPosition() {
-		return position;
+	/** Returns the message data itself. */
+	public T getData() {
+		return data;
 	}
 }
