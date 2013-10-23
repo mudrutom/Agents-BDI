@@ -6,7 +6,6 @@ import massim.agent.Position;
 
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Comparator;
 
 /**
  * Representation of the game map with utility methods.
@@ -77,11 +76,16 @@ public class GameMap implements GameConstants {
 	 */
 	public Action getScoutDirection(Position agentPos) {
 		final int x = agentPos.getX(), y = agentPos.getY();
-		final int left = 1, right = map.length - 2;
-		final int top = 1, bottom = map[0].length - 2;
+		final int left = 1, center = map.length / 2, right = map.length - 2;
+		final int top = 1, middle = map[0].length / 2, bottom = map[0].length - 2;
+
 		if (x > left && x < right && y > top && y < bottom) {
-			// default direction to reach left map border
-			return Action.WEST;
+			// direction to reach map border
+			if (Math.abs(x - center) < Math.abs(y - middle)) {
+				return (y < middle) ? Action.NORTH : Action.SOUTH;
+			} else {
+				return (x < center) ? Action.WEST : Action.EAST;
+			}
 		} else if (x <= left && y > top) {
 			return Action.NORTH;
 		} else if (y <= top && x < right) {
@@ -172,17 +176,13 @@ public class GameMap implements GameConstants {
 		}
 	}
 
-	/** Returns new distance comparator for given point. */
-	public static Comparator<Position> distanceComparator(Position position) {
-		final int x = position.getX(), y = position.getY();
-		return new Comparator<Position>() {
-			@Override
-			public int compare(Position one, Position two) {
-				// Manhattan distance
-				final int distOne = Math.max(Math.abs(x - one.getX()), Math.abs(y - one.getY()));
-				final int distTwo = Math.max(Math.abs(x - two.getX()), Math.abs(y - two.getY()));
-				return distOne - distTwo;
-			}
-		};
+	/** Returns <tt>true</tt> IFF the agent is near given checkpoint. */
+	public static boolean isNearCheckpoint(Position agentPos, Position checkpoint) {
+		return getDistance(agentPos, checkpoint) < 5;
+	}
+
+	/** Returns the Manhattan distance between given two points. */
+	public static int getDistance(Position one, Position two) {
+		return Math.max(Math.abs(one.getX() - two.getX()), Math.abs(one.getY() - two.getY()));
 	}
 }

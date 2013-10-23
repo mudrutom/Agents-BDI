@@ -174,7 +174,7 @@ public class MyAgent extends MASAgent implements GameConstants {
 	private void sendCommands() {
 		// leader self-commands
 		if (state == AgentState.idle) {
-			desiredPositions.add(new Position(5, 5));
+			desiredPositions.add(new Position(4, 13));
 			setState(AgentState.walking);
 		}
 
@@ -200,7 +200,7 @@ public class MyAgent extends MASAgent implements GameConstants {
 
 		// commands for the follower agent
 		if (follower.state == AgentState.idle) {
-			sendMessage(follower.getName(), MessageUtils.create("goto", myCheckpoints.peek()));
+			sendMessage(follower.getName(), MessageUtils.create("goto", new Position(2, 11)));
 			follower.state = AgentState.walking;
 		}
 	}
@@ -274,10 +274,10 @@ public class MyAgent extends MASAgent implements GameConstants {
 
 	/** Agents' walking mode. */
 	private Action doWalking() {
-		if (intendedPosition == null && myCheckpoints.isEmpty()) {
-			printInfo("FINISHED");
-			setState(AgentState.finished);
-		} else if (intendedPosition == null) {
+		final Action goForIt = goForCheckpoint();
+		if (goForIt != null) return goForIt;
+
+		if (intendedPosition == null) {
 			if (desiredPositions.isEmpty()) {
 				setState(AgentState.ready);
 			} else {
@@ -297,6 +297,9 @@ public class MyAgent extends MASAgent implements GameConstants {
 
 	/** Agents' scouting mode. */
 	private Action doScouting() {
+		final Action goForIt = goForCheckpoint();
+		if (goForIt != null) return goForIt;
+
 		final Action scoutDirection = map.getScoutDirection(myPosition);
 		final Position nextPosition = GameMap.move(myPosition, scoutDirection);
 
@@ -310,6 +313,27 @@ public class MyAgent extends MASAgent implements GameConstants {
 		}
 
 		return scoutDirection;
+	}
+
+	/** Go for the next checkpoint if it's near enough. */
+	private Action goForCheckpoint() {
+		if (myCheckpoints.isEmpty()) {
+			printInfo("FINISHED");
+			setState(AgentState.finished);
+			return Action.SKIP;
+		}
+
+		final Position checkpoint = myCheckpoints.peek();
+		if (myPosition.equals(checkpoint)) {
+			printInfo("CHECKPOINT " + checkpoint);
+			myCheckpoints.remove();
+			return Action.SKIP;
+		}
+		if (GameMap.isNearCheckpoint(myPosition, checkpoint)) {
+			return map.planMove(myPosition, checkpoint);
+		} else {
+			return null;
+		}
 	}
 
 	/** Performs a random walk. */
