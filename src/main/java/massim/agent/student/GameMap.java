@@ -92,6 +92,29 @@ public class GameMap implements GameConstants {
 		return action;
 	}
 
+	/**
+	 * Returns a scouting direction (action) for given agent position.<br/>
+	 * Note: Scouting route goes along the border of the map.
+	 */
+	public Action getScoutDirection(Position agentPos) {
+		final int x = agentPos.getX(), y = agentPos.getY();
+		final int left = 1, right = map.length - 2;
+		final int top = 1, bottom = map[0].length - 2;
+		if (x > left && x < right && y > top && y < bottom) {
+			// default direction to reach left map border
+			return Action.WEST;
+		} else if (x <= left && y > top) {
+			return Action.NORTH;
+		} else if (y <= top && x < right) {
+			return Action.EAST;
+		} else if (x >= right && y < bottom) {
+			return Action.SOUTH;
+		} else if (y >= bottom && x > left) {
+			return Action.WEST;
+		}
+		return Action.SKIP;
+	}
+
 	/** Returns the map as a string. */
 	public String toString() {
 		final StringBuilder sb = new StringBuilder(map.length + map.length * map[0].length);

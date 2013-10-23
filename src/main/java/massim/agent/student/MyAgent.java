@@ -8,12 +8,11 @@ import massim.agent.Position;
 import massim.agent.student.utils.MessageData;
 import massim.agent.student.utils.MessageUtils;
 
-import java.util.ArrayList;
-import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Random;
 
 /**
@@ -21,7 +20,7 @@ import java.util.Random;
  */
 public class MyAgent extends MASAgent implements GameConstants {
 
-	private static final boolean INFO = true, DEBUG = true, VERBOSE = false;
+	private static final boolean INFO = true, DEBUG = true, VERBOSE = true;
 
 	/** Agents' random generator. */
 	private final Random random;
@@ -30,9 +29,9 @@ public class MyAgent extends MASAgent implements GameConstants {
 	private final Map<String, AgentMetadata> friendMetadata;
 
 	/** Agents' desired positions. */
-	private final Deque<Position> desiredPositions;
+	private final Queue<Position> desiredPositions;
 	/** Agents' checkpoints to visit. */
-	private final List<Position> myCheckpoints;
+	private final Queue<Position> myCheckpoints;
 
 	/** Agents' number. */
 	private Long myNumber;
@@ -47,6 +46,8 @@ public class MyAgent extends MASAgent implements GameConstants {
 	private Position myPosition;
 	/** Current position the agent intend to visit. */
 	private Position intendedPosition;
+	/** Position of current fence switch. */
+	private Position currentSwitch;
 
 	/** Constructor of the MyAgent class. */
 	public MyAgent(String host, int port, String username, String password) {
@@ -54,13 +55,14 @@ public class MyAgent extends MASAgent implements GameConstants {
 		random = new Random(System.nanoTime());
 		friendMetadata = new LinkedHashMap<String, AgentMetadata>(FRIENDS);
 		desiredPositions = new LinkedList<Position>();
-		myCheckpoints = new ArrayList<Position>(CHECKPOINTS);
+		myCheckpoints = new LinkedList<Position>(CHECKPOINTS);
 		myNumber = null;
 		isLeader = null;
 		state = AgentState.init;
 		map = null;
 		myPosition = null;
 		intendedPosition = null;
+		currentSwitch = null;
 	}
 
 	@Override
@@ -71,21 +73,28 @@ public class MyAgent extends MASAgent implements GameConstants {
 
     @Override
     protected Action deliberate(MASPerception percept) {
-		printVerbose("step=" + percept.getStep());
+		final long t = System.currentTimeMillis();
 
+		// refresh agents' position and the map
 		myPosition = new Position(percept.getPosX(), percept.getPosY());
 		map.refresh(myPosition, percept.getCellPercepts());
 
 		processMessages();
 
+		// decide the next action
 		final Action action;
 		switch (state) {
 			case init:
 				action = doInit();
 				break;
-			case ready:
-				action = doWalk();
+			case walking:
+				action = doWalking();
 				break;
+			case scouting:
+				action = doScouting();
+				break;
+			case ready:
+			case waiting:
 			case finished:
 				action = Action.SKIP;
 				break;
@@ -93,11 +102,18 @@ public class MyAgent extends MASAgent implements GameConstants {
 			default:
 				action = doRandomWalk();
 		}
+
+		if (isLeader == Boolean.TRUE) {
+			sendCommands();
+		}
+
+		printVerbose("step=" + percept.getStep() + " t=" + (System.currentTimeMillis() - t));
         return action;
     }
 
 	/** Resets the agent into its initial state. */
 	protected void reset() {
+		printDebug("reset initiated");
 		friendMetadata.clear();
 		desiredPositions.clear();
 		myNumber = null;
@@ -106,38 +122,91 @@ public class MyAgent extends MASAgent implements GameConstants {
 		map.init();
 		myPosition = null;
 		intendedPosition = null;
+		currentSwitch = null;
 	}
 
 	/** Processing of the messages in agents' inbox. */
 	protected void processMessages() {
 		final List<Message> messages = getNewMessages();
 		for (Message message : messages) {
-			// retrieve meta-data of the sender (friend agent)
+			// parse received data
+			MessageData data = MessageUtils.parse(message);
+			String type = data.getType();
+			printDebug("MSG from " + message.getSender() + " [" + type + ": " + data.getData() + "]");
+
+			// retrieve meta-data about the sender (friend agent)
 			AgentMetadata metadata = friendMetadata.get(message.getSender());
 			if (metadata == null) {
-				metadata = new AgentMetadata();
+				metadata = new AgentMetadata(message.getSender());
 				friendMetadata.put(message.getSender(), metadata);
 			}
 
-			// process received data
-			MessageData data = MessageUtils.parse(message);
-			if ("reset".equals(data.getType())) {
+			// processing of general messages
+			if ("reset".equals(type)) {
 				reset();
-			} else if ("myState".equals(data.getType())) {
+				return;
+			} else if ("myState".equals(type)) {
 				metadata.state = MessageUtils.getData(data);
-			} else if ("myNumber".equals(data.getType())) {
-				metadata.number = MessageUtils.getData(data);
-			} else if ("leader".equals(data.getType())) {
-				metadata.isLeader = MessageUtils.getData(data);
-			} else if ("position".equals(data.getType())) {
+			} else if ("myPosition".equals(type)) {
 				metadata.position = MessageUtils.getData(data);
-			} else if ("goto".equals(data.getType())) {
-				desiredPositions.addFirst(MessageUtils.<Position>getData(data));
+			} else if ("myNumber".equals(type)) {
+				metadata.number = MessageUtils.getData(data);
+			} else if ("leader".equals(type)) {
+				metadata.isLeader = MessageUtils.getData(data);
 			}
-			printDebug("[" + message.getSender() + " " + data.getType() + "] " + data.getData());
+
+			if (isLeader == Boolean.FALSE) {
+				precessLeaderCommand(data);
+			}
+			if (isLeader == Boolean.TRUE) {
+				processFollowerMessage(data, metadata);
+			}
 		}
 	}
 
+	/** Sends appropriate leader commands. */
+	private void sendCommands() {
+		// leader self-commands
+		if (intendedPosition == null) {
+			intendedPosition = myCheckpoints.poll();
+			setState(AgentState.walking);
+		}
+
+		// commands for the followers
+		for (AgentMetadata metadata : friendMetadata.values()) {
+			if (metadata.state == AgentState.ready) {
+				if (metadata.isScout == Boolean.TRUE) {
+					sendMessage(metadata.getName(), MessageUtils.create("findSwitch"));
+				} else {
+					sendMessage(metadata.getName(), MessageUtils.create("walk"));
+				}
+			}
+		}
+	}
+
+	/** Processing of leader command messages. */
+	private void precessLeaderCommand(MessageData data) {
+		final String type = data.getType();
+		if ("goto".equals(type)) {
+			desiredPositions.add(MessageUtils.<Position>getData(data));
+			setState(AgentState.ready);
+		} else if ("walk".equals(type)) {
+			intendedPosition = myCheckpoints.poll();
+			setState(AgentState.walking);
+		} else if ("findSwitch".equals(type)) {
+			setState(AgentState.scouting);
+		}
+	}
+
+	/** Processing of messages from the followers. */
+	private void processFollowerMessage(MessageData data, AgentMetadata follower) {
+		final String type = data.getType();
+		if ("foundSwitch".equals(type)) {
+			final Position foundSwitch = MessageUtils.getData(data);
+		}
+	}
+
+	/** Agent initialization, establish leader and scout agent. */
 	private Action doInit() {
 		if (myNumber == null) {
 			// send agents' number
@@ -151,6 +220,7 @@ public class MyAgent extends MASAgent implements GameConstants {
 				if (metadata.number != null) {
 					count++;
 					if (myNumber.compareTo(metadata.number) == 0) {
+						// number collision -> reset
 						broadcast(MessageUtils.create("reset"));
 						reset();
 					} else if (max.compareTo(metadata.number) < 0) {
@@ -162,6 +232,15 @@ public class MyAgent extends MASAgent implements GameConstants {
 				isLeader = (myNumber.compareTo(max) == 0);
 				broadcast(MessageUtils.create("leader", isLeader));
 				setState(AgentState.ready);
+
+				if (isLeader) {
+					// determine the scout agent
+					int num = 0;
+					for (AgentMetadata metadata : friendMetadata.values()) {
+						metadata.isScout = (num == 0);
+						num++;
+					}
+				}
 			}
 		}
 
@@ -169,36 +248,37 @@ public class MyAgent extends MASAgent implements GameConstants {
 		return Action.SKIP;
 	}
 
-	private Action doWalk() {
-		if (isLeader) {
-			if (intendedPosition == null) {
-				printDebug("map:\n" + map.toString());
-				final List<Position> switches = map.findAllSwitches();
-				if (!switches.isEmpty()) {
-					final Position positionBeforeSwitch = map.getPositionBeforeSwitch(myPosition, switches.get(0));
-					broadcast(MessageUtils.create("goto", positionBeforeSwitch));
-				}
-				intendedPosition = myPosition;
-			}
-		} else {
-			if (intendedPosition == null && desiredPositions.isEmpty()) {
-				printInfo("FINISHED");
-				setState(AgentState.finished);
-			} else if (intendedPosition == null) {
-				intendedPosition = desiredPositions.removeFirst();
+	/** Agents' walking mode. */
+	private Action doWalking() {
+		if (intendedPosition == null && myCheckpoints.isEmpty()) {
+			printInfo("FINISHED");
+			setState(AgentState.finished);
+		} else if (intendedPosition == null) {
+			if (desiredPositions.isEmpty()) {
+				setState(AgentState.ready);
+			} else {
+				intendedPosition = desiredPositions.poll();
 				printDebug("new intention " + intendedPosition);
 				return map.planMove(myPosition, intendedPosition);
-			} else if (myPosition.equals(intendedPosition)) {
-				intendedPosition = null;
-				printDebug("map:\n" + map.toString());
-				broadcast(MessageUtils.create("position", myPosition));
-			} else {
-				return map.planMove(myPosition, intendedPosition);
 			}
+		} else if (myPosition.equals(intendedPosition)) {
+			intendedPosition = null;
+			broadcast(MessageUtils.create("myPosition", myPosition));
+		} else {
+			return map.planMove(myPosition, intendedPosition);
 		}
+
 		return Action.SKIP;
 	}
 
+	/** Agents' scouting mode. */
+	private Action doScouting() {
+		final Action scoutDirection = map.getScoutDirection(myPosition);
+
+		return scoutDirection;
+	}
+
+	/** Performs a random walk. */
 	private Action doRandomWalk() {
 		return ACTIONS[random.nextInt(ACTIONS.length)];
 	}
