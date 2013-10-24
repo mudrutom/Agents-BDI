@@ -23,7 +23,7 @@ import java.util.Random;
  */
 public class MyAgent extends MASAgent implements GameConstants {
 
-	private static final boolean INFO = true, DEBUG = true, VERBOSE = true;
+	private static final boolean INFO = true, DEBUG = false, VERBOSE = false;
 
 	/** Agents' random generator. */
 	private final Random random;
@@ -98,11 +98,12 @@ public class MyAgent extends MASAgent implements GameConstants {
 				action = doScouting();
 				break;
 			case idle:
+			case finished:
 				action = doIdleWalk();
 				break;
 			case ready:
 			case waiting:
-			case finished:
+			case terminated:
 				action = Action.SKIP;
 				break;
 			default:
@@ -175,7 +176,9 @@ public class MyAgent extends MASAgent implements GameConstants {
 	/** Sends appropriate leader commands. */
 	private void sendCommands() {
 		AgentMetadata scout = null, follower = null;
+		boolean allFinished = (state == AgentState.finished);
 		for (AgentMetadata metadata : friendMetadata.values()) {
+			allFinished &= (metadata.state == AgentState.finished);
 			if (metadata.isScout == Boolean.TRUE) {
 				scout = metadata;
 			} else {
@@ -185,6 +188,14 @@ public class MyAgent extends MASAgent implements GameConstants {
 		if (scout == null || follower == null) return;
 
 		printVerbose("leader=" + state + " scout=" + scout.state + " follower=" + follower.state);
+
+		// terminal state of the game
+		if (allFinished) {
+			printInfo("GAME OVER");
+			broadcast(MessageUtils.create("terminate"));
+			setState(AgentState.terminated);
+			return;
+		}
 
 		// leader self-commands
 		if (state == AgentState.ready && scout.state == AgentState.scouting) {
@@ -219,6 +230,8 @@ public class MyAgent extends MASAgent implements GameConstants {
 			setState(AgentState.scouting);
 		} else if ("idleWalk".equals(type)) {
 			setState(AgentState.idle);
+		} else if ("terminate".equals(type)) {
+			setState(AgentState.terminated);
 		}
 	}
 
@@ -331,21 +344,19 @@ public class MyAgent extends MASAgent implements GameConstants {
 		final Action goForIt = goForCheckpoint();
 		if (goForIt != null) return goForIt;
 
-		return map.getIdleWalkDirection(myPosition);
+		// move with 50% probability
+		return (random.nextFloat() < 0.5f) ? Action.SKIP : map.getIdleWalkDirection(myPosition);
 	}
 
 	/** Go for the next checkpoint if it's near enough. */
 	private Action goForCheckpoint() {
+		if (state == AgentState.finished) {
+			return null;
+		}
 		if (myCheckpoints.isEmpty()) {
 			printInfo("FINISHED");
 			setState(AgentState.finished);
-
-			// perform the last move
-			Action last = doRandomWalk();
-			while (map.get(GameMap.move(myPosition, last)) != GameMap.FREE) {
-				last = doRandomWalk();
-			}
-			return last;
+			return map.getIdleWalkDirection(myPosition);
 		}
 
 		final Position checkpoint = myCheckpoints.peek();

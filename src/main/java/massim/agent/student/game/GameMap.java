@@ -107,7 +107,19 @@ public class GameMap implements GameConstants {
 	 */
 	public Action getIdleWalkDirection(Position agentPos) {
 		final int x = agentPos.getX(), y = agentPos.getY();
-		final int center = map.length / 2, middle = map[0].length / 2;
+		final int left = 2, center = map.length / 2, right = map.length - 3;
+		final int top = 2, middle = map[0].length / 2, bottom = map[0].length - 3;
+
+		// if on scouting rout, go away
+		if (x <= left && y > top) {
+			return Action.EAST;
+		} else if (y <= top && x < right) {
+			return Action.SOUTH;
+		} else if (x >= right && y < bottom) {
+			return Action.WEST;
+		} else if (y >= bottom && x > left) {
+			return Action.NORTH;
+		}
 
 		if (Math.abs(x - center) < Math.abs(y - middle)) {
 			return (y < middle) ? Action.EAST : Action.WEST;
