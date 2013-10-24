@@ -15,13 +15,10 @@ public class Fence implements Serializable {
 	private final Position switchPosition;
 	private final Action direction;
 
-	private boolean opened;
-
 	/** Constructor of the Fence class. */
 	public Fence(Position switchPosition, Action direction) {
 		this.switchPosition = switchPosition;
 		this.direction = direction;
-		opened = false;
 	}
 
 	/** Returns the position of the fence switch. */
@@ -34,33 +31,28 @@ public class Fence implements Serializable {
 		return direction;
 	}
 
-	/** Indicates whether the fence is opened. */
-	public boolean isOpened() {
-		return opened;
-	}
-
-	/** @param opened the fence opened status */
-	public void setOpened(boolean opened) {
-		this.opened = opened;
-	}
-
-	/** Returns the position before fence switch. */
-	public Position getPositionBeforeSwitch() {
-		return GameMap.move(switchPosition, GameMap.inverse(direction));
-	}
-
-	/** Returns the position after fence switch. */
+	/** Returns the position after the fence switch. */
 	public Position getPositionAfterSwitch() {
 		return GameMap.move(switchPosition, direction);
 	}
 
-	/** Returns the position after fence. */
-	public Position getPositionAfterFence() {
-		return GameMap.move(getPositionAfterSwitch(), direction);
+	/** Returns the position behind the fence. */
+	public Position getPositionBehindFence() {
+		final int x = switchPosition.getX(), y = switchPosition.getY();
+		final Position inFence;
+		switch (direction) {
+			case NORTH: inFence = new Position(x + 2, y); break;
+			case EAST: inFence = new Position(x, y + 2); break;
+			case SOUTH: inFence = new Position(x - 2, y); break;
+			case WEST: inFence = new Position(x, y - 2); break;
+			default: inFence = switchPosition;
+		}
+		// position two steps beside switch and two steps behind fence
+		return GameMap.move(GameMap.move(inFence, direction), direction);
 	}
 
 	@Override
 	public String toString() {
-		return "Fence { switch=" + switchPosition  + ", direction=" + direction + ", opened=" + opened + " }";
+		return "Fence { switch=" + switchPosition  + ", direction=" + direction + " }";
 	}
 }

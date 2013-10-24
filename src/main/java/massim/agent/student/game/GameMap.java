@@ -59,7 +59,10 @@ public class GameMap implements GameConstants {
 		return map[position.getX()][position.getY()];
 	}
 
-	/** Plans the next move from one position to the other. */
+	/**
+	 * Plans the next move from one position to the other.<br/>
+	 * Note: It will turn clock-wise until a valid move is found.
+	 */
 	public Action planMove(Position fromPos, Position toPos) {
 		Action action = getAction(fromPos, toPos);
 		Position next = move(fromPos, action);
@@ -96,6 +99,21 @@ public class GameMap implements GameConstants {
 			return Action.WEST;
 		}
 		return Action.SKIP;
+	}
+
+	/**
+	 * Returns a direction (action) of idle walk for given agent position.<br/>
+	 * Note: Idle walk goes clock-wise around the map.
+	 */
+	public Action getIdleWalkDirection(Position agentPos) {
+		final int x = agentPos.getX(), y = agentPos.getY();
+		final int center = map.length / 2, middle = map[0].length / 2;
+
+		if (Math.abs(x - center) < Math.abs(y - middle)) {
+			return (y < middle) ? Action.EAST : Action.WEST;
+		} else {
+			return (x < center) ? Action.NORTH : Action.SOUTH;
+		}
 	}
 
 	/** Returns the map as a string. */
@@ -146,7 +164,10 @@ public class GameMap implements GameConstants {
 		}
 	}
 
-	/** Returns the next action after the given action. */
+	/**
+	 * Returns the next action after the given action.<br/>
+	 * Note: Next in clock-wise sense skipping diagonal directions.
+	 */
 	public static Action next(Action action) {
 		switch (action) {
 			case NORTH: return Action.EAST;
@@ -157,21 +178,6 @@ public class GameMap implements GameConstants {
 			case SOUTHWEST: return Action.WEST;
 			case WEST: return Action.NORTH;
 			case NORTHWEST: return Action.NORTH;
-			default: return Action.SKIP;
-		}
-	}
-
-	/** Returns the inverse action for the given action. */
-	public static Action inverse(Action action) {
-		switch (action) {
-			case NORTH: return Action.SOUTH;
-			case NORTHEAST: return Action.SOUTHWEST;
-			case EAST: return Action.WEST;
-			case SOUTHEAST: return Action.NORTHWEST;
-			case SOUTH: return Action.NORTH;
-			case SOUTHWEST: return Action.NORTHEAST;
-			case WEST: return Action.EAST;
-			case NORTHWEST: return Action.SOUTHEAST;
 			default: return Action.SKIP;
 		}
 	}

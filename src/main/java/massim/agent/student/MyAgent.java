@@ -23,7 +23,7 @@ import java.util.Random;
  */
 public class MyAgent extends MASAgent implements GameConstants {
 
-	private static final boolean INFO = true, DEBUG = true, VERBOSE = false;
+	private static final boolean INFO = true, DEBUG = true, VERBOSE = true;
 
 	/** Agents' random generator. */
 	private final Random random;
@@ -97,12 +97,14 @@ public class MyAgent extends MASAgent implements GameConstants {
 			case scouting:
 				action = doScouting();
 				break;
+			case idle:
+				action = doIdleWalk();
+				break;
 			case ready:
 			case waiting:
 			case finished:
 				action = Action.SKIP;
 				break;
-			case idle:
 			default:
 				action = doRandomWalk();
 		}
@@ -111,7 +113,7 @@ public class MyAgent extends MASAgent implements GameConstants {
 			sendCommands();
 		}
 
-		printVerbose("step=" + percept.getStep() + " t=" + (System.currentTimeMillis() - t));
+		printVerbose("step=" + percept.getStep() +  " action=" + action + " t=" + (System.currentTimeMillis() - t));
         return action;
     }
 
@@ -165,19 +167,13 @@ public class MyAgent extends MASAgent implements GameConstants {
 				precessLeaderCommand(data);
 			}
 			if (isLeader == Boolean.TRUE) {
-				processFollowerMessage(data, metadata);
+				processFollowerMessage(data);
 			}
 		}
 	}
 
 	/** Sends appropriate leader commands. */
 	private void sendCommands() {
-		// leader self-commands
-		if (state == AgentState.idle) {
-			desiredPositions.add(new Position(4, 13));
-			setState(AgentState.walking);
-		}
-
 		AgentMetadata scout = null, follower = null;
 		for (AgentMetadata metadata : friendMetadata.values()) {
 			if (metadata.isScout == Boolean.TRUE) {
@@ -188,20 +184,28 @@ public class MyAgent extends MASAgent implements GameConstants {
 		}
 		if (scout == null || follower == null) return;
 
+		printVerbose("leader=" + state + " scout=" + scout.state + " follower=" + follower.state);
+
+		// leader self-commands
+		if (state == AgentState.ready && scout.state == AgentState.scouting) {
+			setState(AgentState.idle);
+		}
+
 		// commands for the scout agent
 		if (scout.state == AgentState.ready || scout.state == AgentState.idle) {
 			sendMessage(scout.getName(), MessageUtils.create("scout"));
 			scout.state = AgentState.scouting;
 		}
-		if (scout.state == AgentState.waiting && follower.state == AgentState.ready) {
-			sendMessage(scout.getName(), MessageUtils.create("goto", currentFence.getPositionAfterFence()));
+		if (scout.state == AgentState.waiting && follower.state == AgentState.ready && state == AgentState.ready) {
+			final Position furtherAfterSwitch = GameMap.move(currentFence.getPositionAfterSwitch(), currentFence.getDirection());
+			sendMessage(scout.getName(), MessageUtils.create("goto", furtherAfterSwitch));
 			scout.state = AgentState.walking;
 		}
 
 		// commands for the follower agent
-		if (follower.state == AgentState.idle) {
-			sendMessage(follower.getName(), MessageUtils.create("goto", new Position(2, 11)));
-			follower.state = AgentState.walking;
+		if (follower.state == AgentState.ready && scout.state == AgentState.scouting) {
+			sendMessage(follower.getName(), MessageUtils.create("idleWalk"));
+			follower.state = AgentState.idle;
 		}
 	}
 
@@ -213,13 +217,20 @@ public class MyAgent extends MASAgent implements GameConstants {
 			setState(AgentState.walking);
 		} else if ("scout".equals(type)) {
 			setState(AgentState.scouting);
+		} else if ("idleWalk".equals(type)) {
+			setState(AgentState.idle);
 		}
 	}
 
 	/** Processing of messages from the followers. */
-	private void processFollowerMessage(MessageData data, AgentMetadata follower) {
+	private void processFollowerMessage(MessageData data) {
 		final String type = data.getType();
 		if ("foundFence".equals(type)) {
+			// leader self-command
+			desiredPositions.add(currentFence.getPositionBehindFence());
+			setState(AgentState.walking);
+
+			// command for the follower agents
 			final Position after = currentFence.getPositionAfterSwitch();
 			for (AgentMetadata metadata : friendMetadata.values()) {
 				if (metadata.isScout == Boolean.FALSE) {
@@ -236,6 +247,7 @@ public class MyAgent extends MASAgent implements GameConstants {
 			// send agents' number
 			myNumber = random.nextLong();
 			broadcast(MessageUtils.create("myNumber", myNumber));
+			broadcast(MessageUtils.create("myPosition", myPosition));
 		} else if (isLeader == null && friendMetadata.size() == FRIENDS) {
 			// determine the leader agent
 			Long max = myNumber;
@@ -305,7 +317,6 @@ public class MyAgent extends MASAgent implements GameConstants {
 		// test for fence switch
 		if (map.get(nextPosition) == GameMap.SWITCH) {
 			final Fence fence = new Fence(nextPosition, scoutDirection);
-			fence.setOpened(true);
 			broadcast(MessageUtils.create("foundFence", fence));
 			broadcast(MessageUtils.create("myPosition", myPosition));
 			setState(AgentState.waiting);
@@ -315,12 +326,26 @@ public class MyAgent extends MASAgent implements GameConstants {
 		return scoutDirection;
 	}
 
+	/** Agents' (blind) idle walk mode. */
+	private Action doIdleWalk() {
+		final Action goForIt = goForCheckpoint();
+		if (goForIt != null) return goForIt;
+
+		return map.getIdleWalkDirection(myPosition);
+	}
+
 	/** Go for the next checkpoint if it's near enough. */
 	private Action goForCheckpoint() {
 		if (myCheckpoints.isEmpty()) {
 			printInfo("FINISHED");
 			setState(AgentState.finished);
-			return Action.SKIP;
+
+			// perform the last move
+			Action last = doRandomWalk();
+			while (map.get(GameMap.move(myPosition, last)) != GameMap.FREE) {
+				last = doRandomWalk();
+			}
+			return last;
 		}
 
 		final Position checkpoint = myCheckpoints.peek();
@@ -338,7 +363,7 @@ public class MyAgent extends MASAgent implements GameConstants {
 
 	/** Performs a random walk. */
 	private Action doRandomWalk() {
-		return ACTIONS[random.nextInt(ACTIONS.length)];
+		return ACTIONS[random.nextInt(ACTIONS.length - 1)];
 	}
 
 	/** @param state new state of the agent */
@@ -354,7 +379,7 @@ public class MyAgent extends MASAgent implements GameConstants {
 
 	/** Prints given message to STD-OUT if in DEBUG mode. */
 	protected void printDebug(String message) {
-		if (DEBUG) System.out.println(username + "@" + state + ": " + message);
+		if (DEBUG) System.out.println(username + "(" + state + "): " + message);
 	}
 
 	/** Prints given message to STD-OUT if in VERBOSE mode. */
